@@ -19,14 +19,15 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
 
     # model args
-    parser.add_argument("--llm_model", default='Llama-2-7b-chat-hf', choices=['Llama-2-7b-chat-hf', 'Llama-2-13b-chat-hf', 'Mistral-7B-Instruct-v0.2',  'vicuna-7b-v1.3', 'vicuna-13b-v1.3'])
+    parser.add_argument("--llm_model", default='Llama-2-7b-chat-hf')
     parser.add_argument("--emb_model", default='gtr-base', choices=['gtr-base', 'contriever'])
-    parser.add_argument("--oracle_llm", default='gpt-4-1106-preview', choices=['gpt-4-1106-preview', 'gpt-4o-mini'])
+    # parser.add_argument("--oracle_llm", default='gpt-4-1106-preview', choices=['gpt-4-1106-preview', 'gpt-4o-mini'])
+    parser.add_argument('--oracle_llm', default='qwen3:8b')
     parser.add_argument('--max_response_len', type=int, default=128)
     parser.add_argument("--llm_batch_size", type=int, default=16, help="LLM batch size, to avoid OOM")
 
     # RAG args
-    parser.add_argument("--dataset", default='nq', choices=['nq', 'msmarco'], help="Evaluated dataset")
+    parser.add_argument("--dataset", default='nq', choices=['nq', 'msmarco', 'hotpotqa'], help="Evaluated dataset")
     parser.add_argument("--num_queries", type=int, default=100, help="Num queries to evaluate")
     parser.add_argument("--k", type=int, default=5, help="Num retrieved documents")
 
@@ -94,7 +95,8 @@ if __name__ == "__main__":
             # get the original clean llm response for the retrieved results
             context_str_list, orig_contexts, context_names = jamming_utils.get_context_str(corpus, cur_query_beir_res,
                                                                                    [args.k], adv_docs=None)
-            prompt_list = [jamming_utils.get_prompt(args, conv_template, context_str, cur_query_txt) for context_str in context_str_list]
+            prompt_list = [jamming_utils.get_prompt(args, conv_template, context_str, cur_query_txt, 
+                                                   llm_type=args.llm_model, tokenizer=llm_params.get('llm_tokenizer')) for context_str in context_str_list]
             response = jamming_utils.get_llm_pred(llm_type=args.llm_model, llm_model=llm_model, prompt_list=prompt_list,
                                                   llm_params=llm_params, batch_size=args.llm_batch_size)[0]
 
@@ -115,15 +117,16 @@ if __name__ == "__main__":
     with open(clean_path, 'wb') as f:
         pickle.dump(results, f)
     print(f"save final results in {clean_path}")
-    destroy_model_parallel()
-    # del llm_model.llm_engine.model_executor
-    del llm_model
-    gc.collect()
-    torch.cuda.empty_cache()
-    import ray
+    if llm_model is not None:
+        destroy_model_parallel()
+        # del llm_model.llm_engine.model_executor
+        del llm_model
+        gc.collect()
+        torch.cuda.empty_cache()
+        import ray
 
-    ray.shutdown()
-    print("done cleaning memory and processes")
+        ray.shutdown()
+        print("done cleaning memory and processes")
     os.remove(res_path_temp)
     print(f"remove temp file from {res_path_temp}")
 
